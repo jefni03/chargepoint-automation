@@ -1,0 +1,25 @@
+name: Join ChargePoint Waitlist
+
+on:
+  schedule:
+    - cron: '0 14 * * *'  # Runs every day at 7 AM PT (14:00 UTC)
+  workflow_dispatch:       # Optional: lets you run it manually
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Make script executable
+        run: chmod +x chargepoint.sh
+
+      - name: Run ChargePoint script
+        env:
+          CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER }}
+          CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD }}
+          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
+          CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
+        run: ./chargepoint.sh -u "$CHARGEPOINT_USER" -p "$CHARGEPOINT_PASSWD" -l "$CHARGEPOINT_WAITLIST_ID" -t "$CHARGEPOINT_UNTIL_TIME"
