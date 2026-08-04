@@ -2,11 +2,9 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    # Start the runner early so it is already running before the join attempts.
-    - cron: '12 6 * * 1-4'
+    - cron: '17 8 * * 1-4'
       timezone: 'America/Los_Angeles'
 
-  # Allows you to run it manually for testing.
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +14,7 @@ concurrency:
 jobs:
   join-waitlist:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 70
 
     steps:
       - name: Checkout code
