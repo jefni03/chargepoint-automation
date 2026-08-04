@@ -9,11 +9,10 @@ CHARGEPOINT_WAITLIST_ID=""
 CHARGEPOINT_UNTIL_TIME=23
 
 readonly PACIFIC_TIMEZONE="America/Los_Angeles"
-
-CHARGEPOINT_COOKIE_JAR="$(mktemp /tmp/chargepoint-cookie-jar.XXXXXX)"
+readonly COOKIE_JAR="$(mktemp /tmp/chargepoint-cookie-jar.XXXXXX)"
 
 cleanup() {
-    rm -f "$CHARGEPOINT_COOKIE_JAR"
+    rm -f "$COOKIE_JAR"
 }
 
 trap cleanup EXIT
@@ -22,11 +21,11 @@ print_usage() {
     echo
     echo "Usage: $0 -u <username> -p <password> -l <waitlist-id> [-t <until-time>]"
     echo
-    echo "  -u <username>:    ChargePoint account username"
-    echo "  -p <password>:    ChargePoint account password"
-    echo "  -l <waitlist-id>: ChargePoint region/waitlist ID"
-    echo "  -t <until-time>:  Hour to remain on the list, from 0 through 23"
-    echo "  -h:               Print this help message"
+    echo "  -u <username>    ChargePoint username"
+    echo "  -p <password>    ChargePoint password"
+    echo "  -l <waitlist-id> ChargePoint waitlist/region ID"
+    echo "  -t <until-time>  Hour to remain eligible, from 0 through 23"
+    echo "  -h               Show this help message"
     echo
 }
 
@@ -42,13 +41,13 @@ error_exit() {
 
 validate_cmd_args() {
     [[ -n "$CHARGEPOINT_USER" ]] ||
-        error_exit "Empty username"
+        error_exit "Username is empty"
 
     [[ -n "$CHARGEPOINT_PASSWD" ]] ||
-        error_exit "Empty password"
+        error_exit "Password is empty"
 
     [[ -n "$CHARGEPOINT_WAITLIST_ID" ]] ||
-        error_exit "Empty waitlist ID"
+        error_exit "Waitlist ID is empty"
 
     is_number "$CHARGEPOINT_WAITLIST_ID" ||
         error_exit "Waitlist ID must be numeric"
@@ -65,18 +64,53 @@ pacific_date() {
     TZ="$PACIFIC_TIMEZONE" date "$@"
 }
 
+target_epoch_today() {
+    local target_time="$1"
+    local today
+
+    today="$(pacific_date +%F)"
+
+    TZ="$PACIFIC_TIMEZONE" date \
+        --date="$today $target_time" \
+        +%s
+}
+
+wait_until() {
+    local target_time="$1"
+    local target_epoch
+    local current_epoch
+    local wait_seconds
+
+    target_epoch="$(target_epoch_today "$target_time")"
+    current_epoch="$(date +%s)"
+
+    if (( current_epoch >= target_epoch )); then
+        echo "Target time $target_time has already passed."
+        return 1
+    fi
+
+    wait_seconds=$((target_epoch - current_epoch))
+
+    echo "Current Pacific time: $(pacific_date)"
+    echo "Waiting until $target_time Pacific."
+    echo "Sleeping for $wait_seconds seconds."
+
+    sleep "$wait_seconds"
+    return 0
+}
+
 chargepoint_login() {
     local response
     local authenticated
 
-    rm -f "$CHARGEPOINT_COOKIE_JAR"
+    rm -f "$COOKIE_JAR"
 
     response="$(
         curl 'https://na.chargepoint.com/users/validate' \
             --silent \
             --show-error \
             --compressed \
-            --cookie-jar "$CHARGEPOINT_COOKIE_JAR" \
+            --cookie-jar "$COOKIE_JAR" \
             --header 'origin: https://na.chargepoint.com' \
             --header 'x-requested-with: XMLHttpRequest' \
             --header 'content-type: application/x-www-form-urlencoded; charset=UTF-8' \
@@ -91,7 +125,7 @@ chargepoint_login() {
             --data-urlencode 'timezone=PDT' \
             --data-urlencode 'timezone_name='
     )" || {
-        echo "$(pacific_date): ChargePoint login request failed"
+        echo "Login request failed."
         return 1
     }
 
@@ -101,11 +135,11 @@ chargepoint_login() {
     )"
 
     if [[ "$authenticated" != "true" ]]; then
-        echo "$(pacific_date): ChargePoint login was rejected"
+        echo "ChargePoint login was rejected."
         return 1
     fi
 
-    echo "$(pacific_date): ChargePoint login successful"
+    echo "ChargePoint login successful at $(pacific_date)"
     return 0
 }
 
@@ -114,7 +148,7 @@ chargepoint_join_waitlist() {
         --silent \
         --show-error \
         --compressed \
-        --cookie "$CHARGEPOINT_COOKIE_JAR" \
+        --cookie "$COOKIE_JAR" \
         --header 'origin: https://na.chargepoint.com' \
         --header 'x-requested-with: XMLHttpRequest' \
         --header 'content-type: application/x-www-form-urlencoded; charset=UTF-8' \
@@ -125,57 +159,22 @@ chargepoint_join_waitlist() {
         --data-urlencode "untilTime=$CHARGEPOINT_UNTIL_TIME"
 }
 
-target_epoch_for_today() {
-    local target_time="$1"
-    local today
-
-    today="$(pacific_date +%F)"
-
-    TZ="$PACIFIC_TIMEZONE" date \
-        --date="$today $target_time" \
-        +%s
-}
-
-wait_until_time() {
-    local target_time="$1"
-    local target_epoch
-    local current_epoch
-    local wait_seconds
-
-    target_epoch="$(target_epoch_for_today "$target_time")"
-    current_epoch="$(date +%s)"
-
-    if (( current_epoch >= target_epoch )); then
-        return 1
-    fi
-
-    wait_seconds=$((target_epoch - current_epoch))
-
-    echo "Waiting until $target_time Pacific"
-    echo "Current Pacific time: $(pacific_date)"
-    echo "Waiting $wait_seconds seconds"
-
-    sleep "$wait_seconds"
-    return 0
-}
-
 attempt_join() {
-    local scheduled_time="$1"
+    local label="$1"
     local response
     local status
     local message
 
     echo
-    echo "Attempting waitlist join for the $scheduled_time slot"
-    echo "Actual attempt time: $(pacific_date)"
+    echo "Attempt: $label"
+    echo "Actual Pacific time: $(pacific_date)"
 
     if ! chargepoint_login; then
-        echo "Login failed for the $scheduled_time attempt"
         return 1
     fi
 
     response="$(chargepoint_join_waitlist)" || {
-        echo "Waitlist request failed"
+        echo "Waitlist request failed."
         return 1
     }
 
@@ -193,7 +192,7 @@ attempt_join() {
     echo "ChargePoint response: $message"
 
     if [[ "$status" == "1" ]]; then
-        echo "ChargePoint accepted the waitlist request."
+        echo "Waitlist request accepted."
         return 0
     fi
 
@@ -201,44 +200,46 @@ attempt_join() {
         'already.*waitlist|already.*active|already.*activated|currently.*waitlist' \
         <<<"$message"; then
 
-        echo "You are already on the waitlist."
+        echo "Already on the waitlist."
         return 0
     fi
 
-    echo "The $scheduled_time attempt was not accepted."
     return 1
 }
 
-run_scheduled_attempts() {
-    local join_times=("06:30" "07:00" "07:30")
-    local join_time
-    local attempts_made=0
-    local current_epoch
+run_attempts() {
+    local attempt_times=(
+        "08:59:50"
+        "09:00:05"
+        "09:00:20"
+    )
+
+    local attempt_time
     local target_epoch
+    local current_epoch
+    local future_attempt_found=0
 
-    for join_time in "${join_times[@]}"; do
+    for attempt_time in "${attempt_times[@]}"; do
+        target_epoch="$(target_epoch_today "$attempt_time")"
         current_epoch="$(date +%s)"
-        target_epoch="$(target_epoch_for_today "$join_time")"
 
-        # Skip past slots instead of immediately sending several requests.
         if (( current_epoch >= target_epoch )); then
-            echo "Skipping past time slot: $join_time Pacific"
+            echo "Skipping past attempt: $attempt_time Pacific"
             continue
         fi
 
-        wait_until_time "$join_time"
-        attempts_made=$((attempts_made + 1))
+        future_attempt_found=1
+        wait_until "$attempt_time"
 
-        if attempt_join "$join_time"; then
-            echo "Stopping because the waitlist request succeeded."
+        if attempt_join "$attempt_time"; then
+            echo "Stopping after successful response."
             return 0
         fi
     done
 
-    # If GitHub started extremely late, try once immediately.
-    if (( attempts_made == 0 )); then
+    if (( future_attempt_found == 0 )); then
         echo
-        echo "All scheduled slots have passed."
+        echo "GitHub started after all scheduled attempts."
         echo "Making one immediate fallback attempt."
 
         if attempt_join "late fallback"; then
@@ -277,16 +278,16 @@ done
 main() {
     validate_cmd_args
 
-    echo "ChargePoint waitlist automation started"
+    echo "ChargePoint waitlist automation started."
     echo "Pacific start time: $(pacific_date)"
-    echo "Join times: 6:30 AM, 7:00 AM, and 7:30 AM Pacific"
+    echo "Planned attempts: 8:59:50, 9:00:05, and 9:00:20 AM Pacific."
 
-    if run_scheduled_attempts; then
+    if run_attempts; then
         echo "ChargePoint automation completed successfully."
         exit 0
     fi
 
-    echo "None of the waitlist attempts succeeded."
+    echo "No waitlist attempt was accepted."
     exit 1
 }
 
