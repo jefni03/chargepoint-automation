@@ -23,9 +23,9 @@ print_usage() {
     echo
     echo "  -u <username>    ChargePoint username"
     echo "  -p <password>    ChargePoint password"
-    echo "  -l <waitlist-id> ChargePoint waitlist/region ID"
-    echo "  -t <until-time>  Hour to remain eligible, from 0 through 23"
-    echo "  -h               Show this help message"
+    echo "  -l <waitlist-id> ChargePoint waitlist ID"
+    echo "  -t <until-time>  Hour to stay on waitlist [0-23]"
+    echo "  -h               Show help"
     echo
 }
 
@@ -64,14 +64,27 @@ pacific_date() {
     TZ="$PACIFIC_TIMEZONE" date "$@"
 }
 
-target_epoch_today() {
+target_epoch_for_attempt() {
     local target_time="$1"
-    local today
+    local current_hour
+    local target_date
 
-    today="$(pacific_date +%F)"
+    current_hour="$(pacific_date +%H)"
+
+    # Workflow normally starts around 11:40 PM.
+    # In that case, midnight belongs to the next calendar day.
+    if (( 10#$current_hour >= 20 )); then
+        target_date="$(
+            TZ="$PACIFIC_TIMEZONE" date \
+                --date="tomorrow" \
+                +%F
+        )"
+    else
+        target_date="$(pacific_date +%F)"
+    fi
 
     TZ="$PACIFIC_TIMEZONE" date \
-        --date="$today $target_time" \
+        --date="$target_date $target_time" \
         +%s
 }
 
@@ -81,21 +94,22 @@ wait_until() {
     local current_epoch
     local wait_seconds
 
-    target_epoch="$(target_epoch_today "$target_time")"
+    target_epoch="$(target_epoch_for_attempt "$target_time")"
     current_epoch="$(date +%s)"
 
     if (( current_epoch >= target_epoch )); then
-        echo "Target time $target_time has already passed."
         return 1
     fi
 
     wait_seconds=$((target_epoch - current_epoch))
 
+    echo
     echo "Current Pacific time: $(pacific_date)"
-    echo "Waiting until $target_time Pacific."
-    echo "Sleeping for $wait_seconds seconds."
+    echo "Waiting until $target_time Pacific"
+    echo "Sleeping $wait_seconds seconds"
 
     sleep "$wait_seconds"
+
     return 0
 }
 
@@ -125,7 +139,7 @@ chargepoint_login() {
             --data-urlencode 'timezone=PDT' \
             --data-urlencode 'timezone_name='
     )" || {
-        echo "Login request failed."
+        echo "ChargePoint login request failed."
         return 1
     }
 
@@ -135,7 +149,7 @@ chargepoint_login() {
     )"
 
     if [[ "$authenticated" != "true" ]]; then
-        echo "ChargePoint login was rejected."
+        echo "ChargePoint login rejected."
         return 1
     fi
 
@@ -166,10 +180,13 @@ attempt_join() {
     local message
 
     echo
-    echo "Attempt: $label"
+    echo "======================================"
+    echo "Waitlist attempt: $label"
     echo "Actual Pacific time: $(pacific_date)"
+    echo "======================================"
 
     if ! chargepoint_login; then
+        echo "Login failed."
         return 1
     fi
 
@@ -192,7 +209,8 @@ attempt_join() {
     echo "ChargePoint response: $message"
 
     if [[ "$status" == "1" ]]; then
-        echo "Waitlist request accepted."
+        echo
+        echo "SUCCESS: Waitlist request accepted."
         return 0
     fi
 
@@ -200,46 +218,56 @@ attempt_join() {
         'already.*waitlist|already.*active|already.*activated|currently.*waitlist' \
         <<<"$message"; then
 
-        echo "Already on the waitlist."
+        echo
+        echo "SUCCESS: Already on the waitlist."
         return 0
     fi
+
+    echo
+    echo "Attempt was not accepted."
 
     return 1
 }
 
 run_attempts() {
     local attempt_times=(
-        "08:59:50"
-        "09:00:05"
-        "09:00:20"
+        "00:00:02"
+        "00:00:15"
+        "00:00:30"
     )
 
     local attempt_time
     local target_epoch
     local current_epoch
-    local future_attempt_found=0
+    local attempted_any=0
 
     for attempt_time in "${attempt_times[@]}"; do
-        target_epoch="$(target_epoch_today "$attempt_time")"
+
+        target_epoch="$(target_epoch_for_attempt "$attempt_time")"
         current_epoch="$(date +%s)"
 
         if (( current_epoch >= target_epoch )); then
-            echo "Skipping past attempt: $attempt_time Pacific"
+            echo "Skipping past attempt: $attempt_time"
             continue
         fi
 
-        future_attempt_found=1
+        attempted_any=1
+
         wait_until "$attempt_time"
 
         if attempt_join "$attempt_time"; then
-            echo "Stopping after successful response."
+            echo
+            echo "Stopping. No more waitlist requests will be sent."
             return 0
         fi
     done
 
-    if (( future_attempt_found == 0 )); then
+    # If GitHub itself started late and midnight already passed,
+    # make ONE request immediately.
+    if (( attempted_any == 0 )); then
+
         echo
-        echo "GitHub started after all scheduled attempts."
+        echo "GitHub started after the midnight attempts."
         echo "Making one immediate fallback attempt."
 
         if attempt_join "late fallback"; then
@@ -252,22 +280,28 @@ run_attempts() {
 
 while getopts ':u:p:l:t:h' option; do
     case "$option" in
+
         u)
             CHARGEPOINT_USER="$OPTARG"
             ;;
+
         p)
             CHARGEPOINT_PASSWD="$OPTARG"
             ;;
+
         l)
             CHARGEPOINT_WAITLIST_ID="$OPTARG"
             ;;
+
         t)
             CHARGEPOINT_UNTIL_TIME="$OPTARG"
             ;;
+
         h)
             print_usage
             exit 0
             ;;
+
         *)
             print_usage
             exit 1
@@ -278,15 +312,24 @@ done
 main() {
     validate_cmd_args
 
+    echo
     echo "ChargePoint waitlist automation started."
     echo "Pacific start time: $(pacific_date)"
-    echo "Planned attempts: 8:59:50, 9:00:05, and 9:00:20 AM Pacific."
+    echo
+    echo "Planned attempts:"
+    echo "  12:00:02 AM"
+    echo "  12:00:15 AM"
+    echo "  12:00:30 AM"
+    echo
+    echo "Days: Monday through Thursday"
 
     if run_attempts; then
+        echo
         echo "ChargePoint automation completed successfully."
         exit 0
     fi
 
+    echo
     echo "No waitlist attempt was accepted."
     exit 1
 }
