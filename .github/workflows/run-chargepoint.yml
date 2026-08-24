@@ -2,7 +2,9 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    - cron: '17 8 * * 1-4'
+    # Starts Sunday-Wednesday at 11:40 PM Pacific
+    # so it can join Monday-Thursday at midnight.
+    - cron: '40 23 * * 0-3'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
@@ -14,7 +16,7 @@ concurrency:
 jobs:
   join-waitlist:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -26,7 +28,6 @@ jobs:
       - name: Show workflow start time
         run: |
           echo "Trigger: ${{ github.event_name }}"
-          echo "Scheduled expression: ${{ github.event.schedule }}"
           echo "UTC time: $(date -u)"
           echo "Pacific time: $(TZ=America/Los_Angeles date)"
 
@@ -36,6 +37,7 @@ jobs:
           CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD }}
           CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
           CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
+
         run: |
           ./chargepoint.sh \
             -u "$CHARGEPOINT_USER" \
