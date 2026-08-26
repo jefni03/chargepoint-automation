@@ -71,8 +71,7 @@ target_epoch_for_attempt() {
 
     current_hour="$(pacific_date +%H)"
 
-    # Workflow normally starts around 11:40 PM.
-    # In that case, midnight belongs to the next calendar day.
+    # If script starts late at night, midnight belongs to tomorrow.
     if (( 10#$current_hour >= 20 )); then
         target_date="$(
             TZ="$PACIFIC_TIMEZONE" date \
@@ -262,10 +261,8 @@ run_attempts() {
         fi
     done
 
-    # If GitHub itself started late and midnight already passed,
-    # make ONE request immediately.
+    # If GitHub itself starts after midnight, try once immediately.
     if (( attempted_any == 0 )); then
-
         echo
         echo "GitHub started after the midnight attempts."
         echo "Making one immediate fallback attempt."
@@ -280,28 +277,22 @@ run_attempts() {
 
 while getopts ':u:p:l:t:h' option; do
     case "$option" in
-
         u)
             CHARGEPOINT_USER="$OPTARG"
             ;;
-
         p)
             CHARGEPOINT_PASSWD="$OPTARG"
             ;;
-
         l)
             CHARGEPOINT_WAITLIST_ID="$OPTARG"
             ;;
-
         t)
             CHARGEPOINT_UNTIL_TIME="$OPTARG"
             ;;
-
         h)
             print_usage
             exit 0
             ;;
-
         *)
             print_usage
             exit 1
