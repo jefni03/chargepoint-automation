@@ -3,7 +3,7 @@ name: Join ChargePoint Waitlist
 on:
   schedule:
     # Sunday-Wednesday at 10:30 PM Pacific.
-    # The runner starts early and waits until midnight.
+    # Both runners start early and wait until midnight.
     - cron: '30 22 * * 0-3'
       timezone: 'America/Los_Angeles'
 
@@ -15,6 +15,11 @@ concurrency:
 
 jobs:
   join-waitlist:
+    strategy:
+      fail-fast: false
+      matrix:
+        account: [JEFFREY, AILEEN]
+
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -27,17 +32,32 @@ jobs:
 
       - name: Show workflow start time
         run: |
+          echo "Account: ${{ matrix.account }}"
           echo "Trigger: ${{ github.event_name }}"
           echo "UTC time: $(date -u)"
           echo "Pacific time: $(TZ=America/Los_Angeles date)"
 
-      - name: Run ChargePoint script
+      - name: Run Jeffrey
+        if: matrix.account == 'JEFFREY'
         env:
           CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER }}
           CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD }}
           CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
           CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
+        run: |
+          ./chargepoint.sh \
+            -u "$CHARGEPOINT_USER" \
+            -p "$CHARGEPOINT_PASSWD" \
+            -l "$CHARGEPOINT_WAITLIST_ID" \
+            -t "$CHARGEPOINT_UNTIL_TIME"
 
+      - name: Run Aileen
+        if: matrix.account == 'AILEEN'
+        env:
+          CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER_AILEEN }}
+          CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD_AILEEN }}
+          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
+          CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
         run: |
           ./chargepoint.sh \
             -u "$CHARGEPOINT_USER" \
