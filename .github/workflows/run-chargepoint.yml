@@ -2,9 +2,9 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    # Starts Sunday-Wednesday at 11:40 PM Pacific
-    # so it can join Monday-Thursday at midnight.
-    - cron: '40 23 * * 0-3'
+    # Sunday-Wednesday at 10:30 PM Pacific.
+    # The runner starts early and waits until midnight.
+    - cron: '30 22 * * 0-3'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   join-waitlist:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
