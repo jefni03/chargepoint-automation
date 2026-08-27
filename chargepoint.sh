@@ -22,13 +22,9 @@ print_usage() {
     echo "Usage: $0 -u <username> -p <password> -l <waitlist-id> [-t <until-time>]"
     echo
     echo "  -u <username>    ChargePoint username"
-    echo
     echo "  -p <password>    ChargePoint password"
-    echo
     echo "  -l <waitlist-id> ChargePoint waitlist ID"
-    echo
     echo "  -t <until-time>  Hour to stay on waitlist [0-23]"
-    echo
     echo "  -h               Show help"
     echo
 }
@@ -75,8 +71,7 @@ target_epoch_for_attempt() {
 
     current_hour="$(pacific_date +%H)"
 
-    # If the workflow starts late at night,
-    # midnight belongs to the next calendar day.
+    # If script starts at night, midnight belongs to tomorrow.
     if (( 10#$current_hour >= 20 )); then
         target_date="$(
             TZ="$PACIFIC_TIMEZONE" date \
@@ -200,7 +195,6 @@ attempt_join() {
     }
 
     if jq -e . >/dev/null 2>&1 <<<"$response"; then
-
         status="$(
             printf '%s' "$response" |
                 jq -r '.status // 0'
@@ -208,7 +202,13 @@ attempt_join() {
 
         message="$(
             printf '%s' "$response" |
-                jq -r '.response.message // .message // "No message returned"'
+                jq -r '
+                    .response.message //
+                    .response.error //
+                    .message //
+                    .error //
+                    "No message returned"
+                '
         )"
 
         echo "ChargePoint response: $message"
@@ -232,7 +232,6 @@ attempt_join() {
                 .coulomb_sess,
                 .ci_ui_session
             )'
-
     else
         echo "ChargePoint returned a non-JSON response."
         echo
@@ -250,7 +249,6 @@ attempt_join() {
     if grep -qiE \
         'already.*waitlist|already.*active|already.*activated|currently.*waitlist' \
         <<<"$message"; then
-
         echo
         echo "SUCCESS: Already on the waitlist."
         return 0
@@ -258,7 +256,6 @@ attempt_join() {
 
     echo
     echo "Attempt was not accepted."
-
     return 1
 }
 
@@ -275,7 +272,6 @@ run_attempts() {
     local attempted_any=0
 
     for attempt_time in "${attempt_times[@]}"; do
-
         target_epoch="$(target_epoch_for_attempt "$attempt_time")"
         current_epoch="$(date +%s)"
 
@@ -295,10 +291,8 @@ run_attempts() {
         fi
     done
 
-    # If GitHub starts after all midnight attempts,
-    # make one immediate fallback request.
+    # If GitHub starts after midnight, make one immediate fallback attempt.
     if (( attempted_any == 0 )); then
-
         echo
         echo "GitHub started after the midnight attempts."
         echo "Making one immediate fallback attempt."
@@ -348,7 +342,7 @@ main() {
     echo "  12:00:15 AM"
     echo "  12:00:30 AM"
     echo
-    echo "Days: Monday through Thursday"
+    echo "Days: Monday through Friday"
 
     if run_attempts; then
         echo
