@@ -22,9 +22,13 @@ print_usage() {
     echo "Usage: $0 -u <username> -p <password> -l <waitlist-id> [-t <until-time>]"
     echo
     echo "  -u <username>    ChargePoint username"
+    echo
     echo "  -p <password>    ChargePoint password"
+    echo
     echo "  -l <waitlist-id> ChargePoint waitlist ID"
+    echo
     echo "  -t <until-time>  Hour to stay on waitlist [0-23]"
+    echo
     echo "  -h               Show help"
     echo
 }
@@ -71,7 +75,8 @@ target_epoch_for_attempt() {
 
     current_hour="$(pacific_date +%H)"
 
-    # If script starts late at night, midnight belongs to tomorrow.
+    # If the workflow starts late at night,
+    # midnight belongs to the next calendar day.
     if (( 10#$current_hour >= 20 )); then
         target_date="$(
             TZ="$PACIFIC_TIMEZONE" date \
@@ -175,8 +180,8 @@ chargepoint_join_waitlist() {
 attempt_join() {
     local label="$1"
     local response
-    local status
-    local message
+    local status="0"
+    local message="No message returned"
 
     echo
     echo "======================================"
@@ -194,18 +199,47 @@ attempt_join() {
         return 1
     }
 
-    status="$(
-        printf '%s' "$response" |
-            jq -r '.status // 0' 2>/dev/null
-    )"
+    if jq -e . >/dev/null 2>&1 <<<"$response"; then
 
-    message="$(
-        printf '%s' "$response" |
-            jq -r '.response.message // .message // "No message returned"' \
-            2>/dev/null
-    )"
+        status="$(
+            printf '%s' "$response" |
+                jq -r '.status // 0'
+        )"
 
-    echo "ChargePoint response: $message"
+        message="$(
+            printf '%s' "$response" |
+                jq -r '.response.message // .message // "No message returned"'
+        )"
+
+        echo "ChargePoint response: $message"
+        echo "ChargePoint status: $status"
+
+        echo
+        echo "Safe response structure:"
+        printf '%s' "$response" |
+            jq 'del(
+                .sessionStorage,
+                .sessionObj,
+                .email,
+                .username,
+                .userid,
+                .userID,
+                .user_id,
+                .userName,
+                .userFullName,
+                .userFirstName,
+                .userEmail,
+                .coulomb_sess,
+                .ci_ui_session
+            )'
+
+    else
+        echo "ChargePoint returned a non-JSON response."
+        echo
+        echo "Response preview:"
+        printf '%s\n' "$response" | head -c 1000
+        echo
+    fi
 
     if [[ "$status" == "1" ]]; then
         echo
@@ -261,8 +295,10 @@ run_attempts() {
         fi
     done
 
-    # If GitHub itself starts after midnight, try once immediately.
+    # If GitHub starts after all midnight attempts,
+    # make one immediate fallback request.
     if (( attempted_any == 0 )); then
+
         echo
         echo "GitHub started after the midnight attempts."
         echo "Making one immediate fallback attempt."
