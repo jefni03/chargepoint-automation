@@ -2,9 +2,10 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    # Sunday-Wednesday at 10:30 PM Pacific.
-    # Both runners start early and wait until midnight.
-    - cron: '30 22 * * 0-3'
+    # Sunday-Thursday at 10:30 PM Pacific.
+    # Each run waits until midnight, so this covers
+    # Monday-Friday waitlists.
+    - cron: '30 22 * * 0-4'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
@@ -34,6 +35,7 @@ jobs:
         run: |
           echo "Account: ${{ matrix.account }}"
           echo "Trigger: ${{ github.event_name }}"
+          echo "Scheduled cron: ${{ github.event.schedule }}"
           echo "UTC time: $(date -u)"
           echo "Pacific time: $(TZ=America/Los_Angeles date)"
 
@@ -56,7 +58,7 @@ jobs:
         env:
           CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER_AILEEN }}
           CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD_AILEEN }}
-          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
+          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID_AILEEN }}
           CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
         run: |
           ./chargepoint.sh \
