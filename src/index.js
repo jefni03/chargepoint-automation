@@ -18,14 +18,19 @@ async function login(username, password) {
     {
       method: "POST",
       headers: {
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "origin": "https://na.chargepoint.com",
+        "accept": "*/*",
+        "accept-language": "en-US,en;q=0.9",
         "x-requested-with": "XMLHttpRequest",
-        origin: "https://na.chargepoint.com",
-        referer: "https://na.chargepoint.com/home",
-        accept: "*/*",
-        "user-agent": "Mozilla/5.0",
+        "pragma": "no-cache",
+        "cache-control": "no-cache",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "referer": "https://na.chargepoint.com/home",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36",
       },
-      body: formEncode({
+
+      body: new URLSearchParams({
         user_name: username,
         user_password: password,
         auth_code: "",
@@ -33,10 +38,51 @@ async function login(username, password) {
         timezone_offset: "420",
         timezone: "PDT",
         timezone_name: "",
-      }),
+      }).toString(),
     }
   );
 
+  const text = await response.text();
+
+  let data;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Login returned non-JSON. HTTP ${response.status}: ${text.slice(0, 300)}`
+    );
+  }
+
+  if (!data.auth) {
+    const safeData = {
+      httpStatus: response.status,
+      auth: data.auth,
+      status: data.status,
+      message: data.message,
+      error: data.error,
+      redirect_url: data.redirect_url,
+      org_sso_login_enabled: data.org_sso_login_enabled,
+    };
+
+    throw new Error(
+      `ChargePoint login rejected: ${JSON.stringify(safeData)}`
+    );
+  }
+
+  const rawCookies = response.headers.get("set-cookie");
+
+  if (!rawCookies) {
+    throw new Error("Login succeeded but ChargePoint returned no Set-Cookie header");
+  }
+
+  const cookie = rawCookies
+    .split(/,(?=[^;,]+=)/)
+    .map((c) => c.split(";")[0])
+    .join("; ");
+
+  return cookie;
+}
   const text = await response.text();
 
   let data;
