@@ -180,13 +180,27 @@ export default {
 
     // Temporary manual test endpoint.
     if (url.pathname === "/test") {
-      const results = await runBothAccounts(env);
+  const results = await runBothAccounts(env);
 
-      return Response.json({
-        ok: true,
-        results,
-      });
+  const cleaned = results.map((result) => {
+    if (result.status === "fulfilled") {
+      return {
+        status: "fulfilled",
+        value: result.value,
+      };
     }
+
+    return {
+      status: "rejected",
+      error: result.reason?.message || String(result.reason),
+    };
+  });
+
+  return Response.json({
+    ok: true,
+    results: cleaned,
+  });
+}
 
     return new Response("Not found", {
       status: 404,
