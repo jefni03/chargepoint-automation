@@ -141,14 +141,6 @@ async function runBothAccounts(env) {
       waitlistId: env.CHARGEPOINT_WAITLIST_ID,
       untilTime,
     }),
-
-    runAccount({
-      name: "AILEEN",
-      username: env.CHARGEPOINT_USER_AILEEN,
-      password: env.CHARGEPOINT_PASSWD_AILEEN,
-      waitlistId: env.CHARGEPOINT_WAITLIST_ID_AILEEN,
-      untilTime,
-    }),
   ]);
 
   for (const result of results) {
@@ -157,7 +149,9 @@ async function runBothAccounts(env) {
         `${result.value.name}: completed with status=${result.value.status}`
       );
     } else {
-      console.error(`Account failed: ${result.reason?.message ?? result.reason}`);
+      console.error(
+        `Account failed: ${result.reason?.message ?? result.reason}`
+      );
     }
   }
 
