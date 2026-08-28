@@ -2,45 +2,120 @@ function formEncode(data) {
   return new URLSearchParams(data).toString();
 }
 
-function extractCookies(response) {
-  let cookies = [];
-
+function getSetCookies(response) {
   if (typeof response.headers.getSetCookie === "function") {
-    cookies = response.headers.getSetCookie();
-  } else {
-    const raw = response.headers.get("set-cookie");
-
-    if (raw) {
-      cookies = raw.split(/,(?=[^;,]+=)/);
-    }
+    return response.headers.getSetCookie();
   }
 
-  return cookies
-    .map((cookie) => cookie.split(";")[0].trim())
-    .filter(Boolean)
+  const raw = response.headers.get("set-cookie");
+
+  if (!raw) {
+    return [];
+  }
+
+  return raw.split(/,(?=[^;,]+=)/);
+}
+
+function cookiesToMap(setCookies) {
+  const map = new Map();
+
+  for (const rawCookie of setCookies) {
+    const firstPart = rawCookie.split(";")[0].trim();
+
+    const equalsIndex = firstPart.indexOf("=");
+
+    if (equalsIndex === -1) {
+      continue;
+    }
+
+    const name = firstPart.slice(0, equalsIndex);
+    const value = firstPart.slice(equalsIndex + 1);
+
+    map.set(name, value);
+  }
+
+  return map;
+}
+
+function mergeCookieMaps(base, incoming) {
+  const merged = new Map(base);
+
+  for (const [name, value] of incoming.entries()) {
+    merged.set(name, value);
+  }
+
+  return merged;
+}
+
+function cookieHeader(cookieMap) {
+  return Array.from(cookieMap.entries())
+    .map(([name, value]) => `${name}=${value}`)
     .join("; ");
 }
 
-async function login(username, password) {
+const COMMON_HEADERS = {
+  accept: "*/*",
+  "accept-language": "en-US,en;q=0.9",
+  "user-agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/151.0.0.0 Safari/537.36",
+};
+
+async function establishSession() {
+  const response = await fetch(
+    "https://na.chargepoint.com/home",
+    {
+      method: "GET",
+
+      headers: {
+        ...COMMON_HEADERS,
+      },
+
+      redirect: "follow",
+    }
+  );
+
+  const cookieMap = cookiesToMap(
+    getSetCookies(response)
+  );
+
+  console.log(
+    `Initial ChargePoint session returned ${cookieMap.size} cookies`
+  );
+
+  return cookieMap;
+}
+
+async function login(
+  username,
+  password,
+  initialCookies
+) {
   const response = await fetch(
     "https://na.chargepoint.com/users/validate",
     {
       method: "POST",
+
       headers: {
-        origin: "https://na.chargepoint.com",
-        accept: "*/*",
-        "accept-language": "en-US,en;q=0.9",
-        "x-requested-with": "XMLHttpRequest",
-        pragma: "no-cache",
-        "cache-control": "no-cache",
+        ...COMMON_HEADERS,
+
+        origin:
+          "https://na.chargepoint.com",
+
+        referer:
+          "https://na.chargepoint.com/home",
+
+        "x-requested-with":
+          "XMLHttpRequest",
+
         "content-type":
           "application/x-www-form-urlencoded; charset=UTF-8",
-        referer: "https://na.chargepoint.com/home",
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-          "AppleWebKit/537.36 (KHTML, like Gecko) " +
-          "Chrome/151.0.0.0 Safari/537.36",
+
+        cookie:
+          cookieHeader(initialCookies),
       },
+
       body: formEncode({
         user_name: username,
         user_password: password,
@@ -53,7 +128,8 @@ async function login(username, password) {
     }
   );
 
-  const text = await response.text();
+  const text =
+    await response.text();
 
   let data;
 
@@ -70,33 +146,55 @@ async function login(username, password) {
 
   if (!data.auth) {
     const safeData = {
-      httpStatus: response.status,
-      auth: data.auth,
-      status: data.status,
-      message: data.message,
-      error: data.error,
-      redirect_url: data.redirect_url,
-      org_sso_login_enabled: data.org_sso_login_enabled,
+      httpStatus:
+        response.status,
+
+      auth:
+        data.auth,
+
+      status:
+        data.status,
+
+      message:
+        data.message,
+
+      error:
+        data.error,
+
+      redirect_url:
+        data.redirect_url,
+
+      org_sso_login_enabled:
+        data.org_sso_login_enabled,
     };
 
     throw new Error(
-      `ChargePoint login rejected: ${JSON.stringify(safeData)}`
+      `ChargePoint login rejected: ${JSON.stringify(
+        safeData
+      )}`
     );
   }
 
-  const cookie = extractCookies(response);
-
-  if (!cookie) {
-    throw new Error(
-      "Login succeeded but ChargePoint returned no session cookie"
+  const loginCookies =
+    cookiesToMap(
+      getSetCookies(response)
     );
-  }
 
-  return cookie;
+  const allCookies =
+    mergeCookieMaps(
+      initialCookies,
+      loginCookies
+    );
+
+  console.log(
+    `Login successful. Session now has ${allCookies.size} cookies`
+  );
+
+  return allCookies;
 }
 
 async function joinWaitlist(
-  cookie,
+  cookies,
   waitlistId,
   untilTime
 ) {
@@ -104,32 +202,41 @@ async function joinWaitlist(
     "https://na.chargepoint.com/community/activateRegion",
     {
       method: "POST",
+
       headers: {
-        origin: "https://na.chargepoint.com",
-        accept:
-          "application/json, text/javascript, */*; q=0.01",
-        "accept-language": "en-US,en;q=0.9",
-        "x-requested-with": "XMLHttpRequest",
-        pragma: "no-cache",
-        "cache-control": "no-cache",
-        "content-type":
-          "application/x-www-form-urlencoded; charset=UTF-8",
+        ...COMMON_HEADERS,
+
+        origin:
+          "https://na.chargepoint.com",
+
         referer:
           "https://na.chargepoint.com/dashboard_driver",
-        cookie,
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-          "AppleWebKit/537.36 (KHTML, like Gecko) " +
-          "Chrome/151.0.0.0 Safari/537.36",
+
+        accept:
+          "application/json, text/javascript, */*; q=0.01",
+
+        "x-requested-with":
+          "XMLHttpRequest",
+
+        "content-type":
+          "application/x-www-form-urlencoded; charset=UTF-8",
+
+        cookie:
+          cookieHeader(cookies),
       },
+
       body: formEncode({
-        regionIds: waitlistId,
-        untilTime,
+        regionIds:
+          waitlistId,
+
+        untilTime:
+          untilTime,
       }),
     }
   );
 
-  const text = await response.text();
+  const text =
+    await response.text();
 
   let data;
 
@@ -155,37 +262,51 @@ async function runAccount({
   untilTime,
 }) {
   if (!username) {
-    throw new Error(`${name}: username secret is missing`);
+    throw new Error(
+      `${name}: username secret is missing`
+    );
   }
 
   if (!password) {
-    throw new Error(`${name}: password secret is missing`);
+    throw new Error(
+      `${name}: password secret is missing`
+    );
   }
 
   if (!waitlistId) {
-    throw new Error(`${name}: waitlist ID secret is missing`);
+    throw new Error(
+      `${name}: waitlist ID secret is missing`
+    );
   }
 
-  console.log(`${name}: logging in`);
-
-  const cookie = await login(
-    username,
-    password
+  console.log(
+    `${name}: establishing ChargePoint session`
   );
 
-  console.log(`${name}: login successful`);
+  const initialCookies =
+    await establishSession();
 
   console.log(
-    `${name}: login returned ${
-      cookie.split(";").length
-    } cookies`
+    `${name}: logging in`
   );
 
-  const result = await joinWaitlist(
-    cookie,
-    waitlistId,
-    untilTime
+  const cookies =
+    await login(
+      username,
+      password,
+      initialCookies
+    );
+
+  console.log(
+    `${name}: login successful`
   );
+
+  const result =
+    await joinWaitlist(
+      cookies,
+      waitlistId,
+      untilTime
+    );
 
   const message =
     result?.response?.message ??
@@ -210,41 +331,54 @@ async function runAccount({
 
 async function runJeffrey(env) {
   const untilTime =
-    env.CHARGEPOINT_UNTIL_TIME || "23";
+    env.CHARGEPOINT_UNTIL_TIME ||
+    "23";
 
   return runAccount({
-    name: "JEFFREY",
-    username: env.CHARGEPOINT_USER,
-    password: env.CHARGEPOINT_PASSWD,
+    name:
+      "JEFFREY",
+
+    username:
+      env.CHARGEPOINT_USER,
+
+    password:
+      env.CHARGEPOINT_PASSWD,
+
     waitlistId:
       env.CHARGEPOINT_WAITLIST_ID,
+
     untilTime,
   });
 }
 
+async function runAccounts(env) {
+  return Promise.allSettled([
+    runJeffrey(env),
+  ]);
+}
+
 function serializeResult(result) {
-  if (result.status === "fulfilled") {
+  if (
+    result.status ===
+    "fulfilled"
+  ) {
     return {
-      status: "fulfilled",
-      value: result.value,
+      status:
+        "fulfilled",
+
+      value:
+        result.value,
     };
   }
 
   return {
-    status: "rejected",
+    status:
+      "rejected",
+
     error:
       result.reason?.message ??
       String(result.reason),
   };
-}
-
-async function runAccounts(env) {
-  const results =
-    await Promise.allSettled([
-      runJeffrey(env),
-    ]);
-
-  return results;
 }
 
 export default {
@@ -264,22 +398,30 @@ export default {
     );
   },
 
-  async fetch(request, env) {
+  async fetch(
+    request,
+    env
+  ) {
     const url =
       new URL(request.url);
 
-    if (url.pathname === "/") {
+    if (
+      url.pathname === "/"
+    ) {
       return new Response(
         "ChargePoint automation Worker is running."
       );
     }
 
-    if (url.pathname === "/test") {
+    if (
+      url.pathname === "/test"
+    ) {
       const results =
         await runAccounts(env);
 
       return Response.json({
         ok: true,
+
         results:
           results.map(
             serializeResult
