@@ -1,65 +1,20 @@
-name: Join ChargePoint Waitlist
+name: Schedule Test
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '20 10 * * *'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
 
-concurrency:
-  group: chargepoint-waitlist
-  cancel-in-progress: false
-
 jobs:
-  join-waitlist:
-    strategy:
-      fail-fast: false
-      matrix:
-        account: [JEFFREY, AILEEN]
-
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Make script executable
-        run: chmod +x chargepoint.sh
-
-      - name: Show workflow start time
+      - name: Show time
         run: |
-          echo "Account: ${{ matrix.account }}"
           echo "Trigger: ${{ github.event_name }}"
-          echo "Scheduled cron: ${{ github.event.schedule }}"
-          echo "UTC time: $(date -u)"
-          echo "Pacific time: $(TZ=America/Los_Angeles date)"
-
-      - name: Run Jeffrey
-        if: matrix.account == 'JEFFREY'
-        env:
-          CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER }}
-          CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD }}
-          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID }}
-          CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
-        run: |
-          ./chargepoint.sh \
-            -u "$CHARGEPOINT_USER" \
-            -p "$CHARGEPOINT_PASSWD" \
-            -l "$CHARGEPOINT_WAITLIST_ID" \
-            -t "$CHARGEPOINT_UNTIL_TIME"
-
-      - name: Run Aileen
-        if: matrix.account == 'AILEEN'
-        env:
-          CHARGEPOINT_USER: ${{ secrets.CHARGEPOINT_USER_AILEEN }}
-          CHARGEPOINT_PASSWD: ${{ secrets.CHARGEPOINT_PASSWD_AILEEN }}
-          CHARGEPOINT_WAITLIST_ID: ${{ secrets.CHARGEPOINT_WAITLIST_ID_AILEEN }}
-          CHARGEPOINT_UNTIL_TIME: ${{ secrets.CHARGEPOINT_UNTIL_TIME }}
-        run: |
-          ./chargepoint.sh \
-            -u "$CHARGEPOINT_USER" \
-            -p "$CHARGEPOINT_PASSWD" \
-            -l "$CHARGEPOINT_WAITLIST_ID" \
-            -t "$CHARGEPOINT_UNTIL_TIME"
+          echo "Schedule: ${{ github.event.schedule }}"
+          echo "UTC: $(date -u)"
+          echo "Pacific: $(TZ=America/Los_Angeles date)"
