@@ -3,15 +3,21 @@ function formEncode(data) {
 }
 
 function extractCookies(response) {
-  const raw = response.headers.get("set-cookie");
+  let cookies = [];
 
-  if (!raw) {
-    return "";
+  if (typeof response.headers.getSetCookie === "function") {
+    cookies = response.headers.getSetCookie();
+  } else {
+    const raw = response.headers.get("set-cookie");
+
+    if (raw) {
+      cookies = raw.split(/,(?=[^;,]+=)/);
+    }
   }
 
-  return raw
-    .split(/,(?=[^;,]+=)/)
-    .map((cookie) => cookie.split(";")[0])
+  return cookies
+    .map((cookie) => cookie.split(";")[0].trim())
+    .filter(Boolean)
     .join("; ");
 }
 
@@ -35,7 +41,6 @@ async function login(username, password) {
           "AppleWebKit/537.36 (KHTML, like Gecko) " +
           "Chrome/151.0.0.0 Safari/537.36",
       },
-
       body: formEncode({
         user_name: username,
         user_password: password,
@@ -99,7 +104,6 @@ async function joinWaitlist(
     "https://na.chargepoint.com/community/activateRegion",
     {
       method: "POST",
-
       headers: {
         origin: "https://na.chargepoint.com",
         accept:
@@ -118,7 +122,6 @@ async function joinWaitlist(
           "AppleWebKit/537.36 (KHTML, like Gecko) " +
           "Chrome/151.0.0.0 Safari/537.36",
       },
-
       body: formEncode({
         regionIds: waitlistId,
         untilTime,
@@ -171,6 +174,12 @@ async function runAccount({
   );
 
   console.log(`${name}: login successful`);
+
+  console.log(
+    `${name}: login returned ${
+      cookie.split(";").length
+    } cookies`
+  );
 
   const result = await joinWaitlist(
     cookie,
@@ -230,9 +239,6 @@ function serializeResult(result) {
 }
 
 async function runAccounts(env) {
-  // For now, only test Jeffrey.
-  // We can add Aileen back after this works.
-
   const results =
     await Promise.allSettled([
       runJeffrey(env),
