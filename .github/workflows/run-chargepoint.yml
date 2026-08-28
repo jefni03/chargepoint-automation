@@ -2,7 +2,7 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    - cron: '43 1 * * *'
+    - cron: '0 2 * * *'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
