@@ -2,10 +2,7 @@ name: Join ChargePoint Waitlist
 
 on:
   schedule:
-    # Sunday-Thursday at 10:30 PM Pacific.
-    # Each run waits until midnight, so this covers
-    # Monday-Friday waitlists.
-    - cron: '30 22 * * 0-4'
+    - cron: '43 1 * * *'
       timezone: 'America/Los_Angeles'
 
   workflow_dispatch:
