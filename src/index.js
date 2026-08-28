@@ -67,11 +67,9 @@ async function establishSession() {
     "https://na.chargepoint.com/home",
     {
       method: "GET",
-
       headers: {
         ...COMMON_HEADERS,
       },
-
       redirect: "follow",
     }
   );
@@ -128,8 +126,7 @@ async function login(
     }
   );
 
-  const text =
-    await response.text();
+  const text = await response.text();
 
   let data;
 
@@ -146,24 +143,12 @@ async function login(
 
   if (!data.auth) {
     const safeData = {
-      httpStatus:
-        response.status,
-
-      auth:
-        data.auth,
-
-      status:
-        data.status,
-
-      message:
-        data.message,
-
-      error:
-        data.error,
-
-      redirect_url:
-        data.redirect_url,
-
+      httpStatus: response.status,
+      auth: data.auth,
+      status: data.status,
+      message: data.message,
+      error: data.error,
+      redirect_url: data.redirect_url,
       org_sso_login_enabled:
         data.org_sso_login_enabled,
     };
@@ -175,16 +160,14 @@ async function login(
     );
   }
 
-  const loginCookies =
-    cookiesToMap(
-      getSetCookies(response)
-    );
+  const loginCookies = cookiesToMap(
+    getSetCookies(response)
+  );
 
-  const allCookies =
-    mergeCookieMaps(
-      initialCookies,
-      loginCookies
-    );
+  const allCookies = mergeCookieMaps(
+    initialCookies,
+    loginCookies
+  );
 
   console.log(
     `Login successful. Session now has ${allCookies.size} cookies`
@@ -226,17 +209,13 @@ async function joinWaitlist(
       },
 
       body: formEncode({
-        regionIds:
-          waitlistId,
-
-        untilTime:
-          untilTime,
+        regionIds: waitlistId,
+        untilTime,
       }),
     }
   );
 
-  const text =
-    await response.text();
+  const text = await response.text();
 
   let data;
 
@@ -329,52 +308,45 @@ async function runAccount({
   };
 }
 
-async function runJeffrey(env) {
-  const untilTime =
-    env.CHARGEPOINT_UNTIL_TIME ||
-    "23";
-
-  return runAccount({
-    name:
-      "JEFFREY",
-
-    username:
-      env.CHARGEPOINT_USER,
-
-    password:
-      env.CHARGEPOINT_PASSWD,
-
-    waitlistId:
-      env.CHARGEPOINT_WAITLIST_ID,
-
-    untilTime,
-  });
-}
-
 async function runAccounts(env) {
+  const untilTime =
+    env.CHARGEPOINT_UNTIL_TIME || "23";
+
   return Promise.allSettled([
-    runJeffrey(env),
+    runAccount({
+      name: "JEFFREY",
+      username:
+        env.CHARGEPOINT_USER,
+      password:
+        env.CHARGEPOINT_PASSWD,
+      waitlistId:
+        env.CHARGEPOINT_WAITLIST_ID,
+      untilTime,
+    }),
+
+    runAccount({
+      name: "AILEEN",
+      username:
+        env.CHARGEPOINT_USER_AILEEN,
+      password:
+        env.CHARGEPOINT_PASSWD_AILEEN,
+      waitlistId:
+        env.CHARGEPOINT_WAITLIST_ID_AILEEN,
+      untilTime,
+    }),
   ]);
 }
 
 function serializeResult(result) {
-  if (
-    result.status ===
-    "fulfilled"
-  ) {
+  if (result.status === "fulfilled") {
     return {
-      status:
-        "fulfilled",
-
-      value:
-        result.value,
+      status: "fulfilled",
+      value: result.value,
     };
   }
 
   return {
-    status:
-      "rejected",
-
+    status: "rejected",
     error:
       result.reason?.message ??
       String(result.reason),
@@ -398,30 +370,22 @@ export default {
     );
   },
 
-  async fetch(
-    request,
-    env
-  ) {
+  async fetch(request, env) {
     const url =
       new URL(request.url);
 
-    if (
-      url.pathname === "/"
-    ) {
+    if (url.pathname === "/") {
       return new Response(
         "ChargePoint automation Worker is running."
       );
     }
 
-    if (
-      url.pathname === "/test"
-    ) {
+    if (url.pathname === "/test") {
       const results =
         await runAccounts(env);
 
       return Response.json({
         ok: true,
-
         results:
           results.map(
             serializeResult
